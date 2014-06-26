@@ -1,8 +1,6 @@
 <?php
 namespace League\Fractal\Test\Pagination;
 
-use Illuminate\Pagination\Factory as PaginationFactory;
-use Illuminate\Pagination\Paginator;
 use League\Fractal\Pagination\IlluminatePaginatorAdapter;
 use Mockery;
 
@@ -10,21 +8,38 @@ class IlluminatePaginationAdapterTest extends \PHPUnit_Framework_TestCase
 {
     public function testPaginationAdapter()
     {
-        $factory = new PaginationFactory('page');
+        if (class_exists('Illuminate\Pagination\Factory')) {
+            $envClass = 'Illuminate\Pagination\Factory';
+        } elseif (class_exists('Illuminate\Pagination\Environment')) {
+            $envClass = 'Illuminate\Pagination\Environment';
+        } else {
+            return $this->markTestSkipped('A pagination class was not available.');
+        }
 
-        $perPage = 2;
-        $total = 10;
+        $env = Mockery::mock($envClass)->makePartial();
 
-        // 2 Items, because perPage is 2. Normally the paginate() method would have that covered
+        $env->setCurrentPage(2);
+        $env->setBaseUrl('http://example.com/foo');
+        $env->setPageName('page');
+
         $items = array(
+            'Item 0',
             'Item 1',
             'Item 2',
+            'Item 3',
+            'Item 4',
         );
 
-        $factory->setBaseUrl('http://example.com/foo');
-        $factory->setCurrentPage(2);
+        $total       = 50;
+        $perPage     = 5;
+        $currentPage = 2;
+        $lastPage    = 10;
 
-        $paginator = $factory->make($items, $total, $perPage);
+        $paginator = Mockery::mock('Illuminate\Pagination\Paginator', array($env, $items, $total, $perPage))->makePartial();
+
+
+        $paginator->shouldReceive('getCurrentPage')->andReturn($currentPage);
+        $paginator->shouldReceive('getLastPage')->andReturn($lastPage);
 
         $adapter = new IlluminatePaginatorAdapter($paginator);
 
@@ -33,11 +48,11 @@ class IlluminatePaginationAdapterTest extends \PHPUnit_Framework_TestCase
             $adapter
         );
 
-        $this->assertEquals(2, $adapter->getCurrentPage());
-        $this->assertEquals(5, $adapter->getLastPage());
+        $this->assertEquals($currentPage, $adapter->getCurrentPage());
+        $this->assertEquals($lastPage, $adapter->getLastPage());
+        $this->assertEquals(count($items), $adapter->getCount());
         $this->assertEquals($total, $adapter->getTotal());
         $this->assertEquals($perPage, $adapter->getPerPage());
-        $this->assertEquals($perPage, $adapter->getCount());
         $this->assertEquals(
             'http://example.com/foo?page=1',
             $adapter->getUrl(1)
@@ -46,6 +61,13 @@ class IlluminatePaginationAdapterTest extends \PHPUnit_Framework_TestCase
             'http://example.com/foo?page=3',
             $adapter->getUrl(3)
         );
+
+        // Test appending
+        $paginator->appends(array('term1' => 'test1', 'term2' => 'test2'));
+        $this->assertContains(
+            'term1=test1&term2=test2',
+            $adapter->getUrl(7)
+        );
     }
 
     public function tearDown()
@@ -53,4 +75,3 @@ class IlluminatePaginationAdapterTest extends \PHPUnit_Framework_TestCase
         Mockery::close();
     }
 }
-
